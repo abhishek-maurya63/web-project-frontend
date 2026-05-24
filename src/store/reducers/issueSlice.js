@@ -2,6 +2,8 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import api from "../../services/api";
 import { logout } from "./authSlice";
 
+const VERIFICATION_TARGET = 3;
+
 const getErrorMessage = (error, fallback) =>
   error.response?.data?.message || error.message || fallback;
 
@@ -10,10 +12,67 @@ const getIssueList = (payload) => {
     return payload;
   }
 
-  return payload?.feed || payload?.issues || payload?.data || payload?.issue || [];
+  return (
+    payload?.issues ||
+    payload?.feed ||
+    payload?.data?.issues ||
+    payload?.data?.feed ||
+    payload?.data ||
+    []
+  );
 };
 
-const getIssue = (payload) => payload?.issue || payload?.data || payload;
+const getIssue = (payload) =>
+  payload?.issue || payload?.data?.issue || payload?.data || payload;
+
+const getId = (value) => value?._id || value?.id || value;
+
+const idsMatch = (left, right) =>
+  Boolean(left && right && getId(left)?.toString() === getId(right)?.toString());
+
+const updateIssueInList = (list, updatedIssue) =>
+  list.map((issue) => (idsMatch(issue, updatedIssue) ? updatedIssue : issue));
+
+const updateIssueEverywhere = (state, updatedIssue) => {
+  if (!updatedIssue?._id) {
+    return;
+  }
+
+  state.feed = updateIssueInList(state.feed, updatedIssue);
+  state.issues = updateIssueInList(state.issues, updatedIssue);
+  state.myIssues = updateIssueInList(state.myIssues, updatedIssue);
+};
+
+const mapIssueEverywhere = (state, issueId, mapper) => {
+  state.feed = state.feed.map((issue) =>
+    idsMatch(issue, issueId) ? mapper(issue) : issue,
+  );
+  state.issues = state.issues.map((issue) =>
+    idsMatch(issue, issueId) ? mapper(issue) : issue,
+  );
+  state.myIssues = state.myIssues.map((issue) =>
+    idsMatch(issue, issueId) ? mapper(issue) : issue,
+  );
+};
+
+const toggleUserInList = (list = [], userId) => {
+  const existing = list.some((entry) => idsMatch(entry, userId));
+
+  if (existing) {
+    return list.filter((entry) => !idsMatch(entry, userId));
+  }
+
+  return [...list, userId];
+};
+
+const addUserToList = (list = [], userId) =>
+  list.some((entry) => idsMatch(entry, userId)) ? list : [...list, userId];
+
+const removeUserFromList = (list = [], userId) =>
+  list.filter((entry) => !idsMatch(entry, userId));
+
+const getSatisfactionLevel = (votes = []) =>
+  Math.min(votes.length / VERIFICATION_TARGET, 1);
 
 const handleIssueRouteError = (error, dispatch, rejectWithValue, fallback) => {
   if (error.response?.status === 401) {
@@ -80,11 +139,18 @@ export const createIssue = createAsyncThunk(
 
 export const updateIssueStatus = createAsyncThunk(
   "issues/updateIssueStatus",
-  async ({ issueId, status = "validated" }, { dispatch, rejectWithValue }) => {
+  async (
+    { issueId, status, actionTakenReport },
+    { dispatch, rejectWithValue },
+  ) => {
     try {
-      const response = await api.patch(`/api/issue/${issueId}/status`, {
-        status,
-      });
+      const body = { status };
+
+      if (actionTakenReport !== undefined) {
+        body.actionTakenReport = actionTakenReport;
+      }
+
+      const response = await api.patch(`/api/issue/status/${issueId}`, body);
       return response.data;
     } catch (error) {
       return handleIssueRouteError(
@@ -97,7 +163,58 @@ export const updateIssueStatus = createAsyncThunk(
   },
 );
 
-export const voteOnIssue = updateIssueStatus;
+export const toggleIssueLike = createAsyncThunk(
+  "issues/toggleIssueLike",
+  async ({ issueId }, { dispatch, rejectWithValue }) => {
+    try {
+      const response = await api.post(`/api/social/${issueId}/like`);
+      return response.data;
+    } catch (error) {
+      return handleIssueRouteError(
+        error,
+        dispatch,
+        rejectWithValue,
+        "Failed to update like",
+      );
+    }
+  },
+);
+
+export const verifyIssue = createAsyncThunk(
+  "issues/verifyIssue",
+  async ({ issueId }, { dispatch, rejectWithValue }) => {
+    try {
+      const response = await api.patch(`/api/social/${issueId}/verify`);
+      return response.data;
+    } catch (error) {
+      return handleIssueRouteError(
+        error,
+        dispatch,
+        rejectWithValue,
+        "Failed to verify issue",
+      );
+    }
+  },
+);
+
+export const appealIssue = createAsyncThunk(
+  "issues/appealIssue",
+  async ({ issueId }, { dispatch, rejectWithValue }) => {
+    try {
+      const response = await api.post(`/api/social/${issueId}/appeal`);
+      return response.data;
+    } catch (error) {
+      return handleIssueRouteError(
+        error,
+        dispatch,
+        rejectWithValue,
+        "Failed to submit feedback",
+      );
+    }
+  },
+);
+
+export const voteOnIssue = toggleIssueLike;
 
 const issueSlice = createSlice({
   name: "issues",
@@ -132,16 +249,7 @@ const issueSlice = createSlice({
     },
 
     updateIssue: (state, action) => {
-      const updated = action.payload;
-      state.feed = state.feed.map((issue) =>
-        issue._id === updated._id ? updated : issue,
-      );
-      state.issues = state.issues.map((issue) =>
-        issue._id === updated._id ? updated : issue,
-      );
-      state.myIssues = state.myIssues.map((issue) =>
-        issue._id === updated._id ? updated : issue,
-      );
+      updateIssueEverywhere(state, action.payload);
     },
 
     setError: (state, action) => {
@@ -213,58 +321,123 @@ const issueSlice = createSlice({
         state.error = action.payload;
       })
       .addCase(updateIssueStatus.pending, (state, action) => {
-        const { issueId, status } = action.meta.arg;
-
-        state.votingIssueId = issueId;
+        state.votingIssueId = action.meta.arg.issueId;
         state.error = null;
-        state.feed = state.feed.map((issue) =>
-          issue._id === issueId
-            ? { ...issue, status, upvotes: (issue.upvotes || 0) + 1 }
-            : issue,
-        );
-        state.issues = state.issues.map((issue) =>
-          issue._id === issueId
-            ? { ...issue, status, upvotes: (issue.upvotes || 0) + 1 }
-            : issue,
-        );
-        state.myIssues = state.myIssues.map((issue) =>
-          issue._id === issueId
-            ? { ...issue, status, upvotes: (issue.upvotes || 0) + 1 }
-            : issue,
-        );
       })
       .addCase(updateIssueStatus.fulfilled, (state, action) => {
         const updated = getIssue(action.payload);
 
         state.votingIssueId = null;
-        state.feed = state.feed.map((issue) =>
-          issue._id === updated._id ? updated : issue,
-        );
-        state.issues = state.issues.map((issue) =>
-          issue._id === updated._id ? updated : issue,
-        );
-        state.myIssues = state.myIssues.map((issue) =>
-          issue._id === updated._id ? updated : issue,
-        );
+        updateIssueEverywhere(state, updated);
       })
       .addCase(updateIssueStatus.rejected, (state, action) => {
-        const { issueId } = action.meta.arg;
+        state.votingIssueId = null;
+        state.error = action.payload;
+      })
+      .addCase(toggleIssueLike.pending, (state, action) => {
+        const { issueId, userId } = action.meta.arg;
 
-        state.feed = state.feed.map((issue) =>
-          issue._id === issueId
-            ? { ...issue, upvotes: Math.max((issue.upvotes || 1) - 1, 0) }
-            : issue,
-        );
-        state.issues = state.issues.map((issue) =>
-          issue._id === issueId
-            ? { ...issue, upvotes: Math.max((issue.upvotes || 1) - 1, 0) }
-            : issue,
-        );
-        state.myIssues = state.myIssues.map((issue) =>
-          issue._id === issueId
-            ? { ...issue, upvotes: Math.max((issue.upvotes || 1) - 1, 0) }
-            : issue,
-        );
+        state.votingIssueId = issueId;
+        state.error = null;
+
+        if (!userId) {
+          return;
+        }
+
+        mapIssueEverywhere(state, issueId, (issue) => ({
+          ...issue,
+          likes: toggleUserInList(issue.likes || [], userId),
+        }));
+      })
+      .addCase(toggleIssueLike.fulfilled, (state, action) => {
+        const updated = getIssue(action.payload);
+
+        state.votingIssueId = null;
+        updateIssueEverywhere(state, updated);
+      })
+      .addCase(toggleIssueLike.rejected, (state, action) => {
+        const { issueId, userId } = action.meta.arg;
+
+        if (userId) {
+          mapIssueEverywhere(state, issueId, (issue) => ({
+            ...issue,
+            likes: toggleUserInList(issue.likes || [], userId),
+          }));
+        }
+
+        state.votingIssueId = null;
+        state.error = action.payload;
+      })
+      .addCase(verifyIssue.pending, (state, action) => {
+        const { issueId, userId } = action.meta.arg;
+
+        state.votingIssueId = issueId;
+        state.error = null;
+
+        if (!userId) {
+          return;
+        }
+
+        mapIssueEverywhere(state, issueId, (issue) => {
+          if (issue.status !== "resolved") {
+            return issue;
+          }
+
+          const verificationVotes = addUserToList(
+            issue.verificationVotes || [],
+            userId,
+          );
+
+          return {
+            ...issue,
+            verificationVotes,
+            satisfactionLevel: getSatisfactionLevel(verificationVotes),
+            status:
+              verificationVotes.length >= VERIFICATION_TARGET
+                ? "closed"
+                : issue.status,
+          };
+        });
+      })
+      .addCase(verifyIssue.fulfilled, (state, action) => {
+        const updated = getIssue(action.payload);
+
+        state.votingIssueId = null;
+        updateIssueEverywhere(state, updated);
+      })
+      .addCase(verifyIssue.rejected, (state, action) => {
+        const { issueId, userId } = action.meta.arg;
+
+        if (userId) {
+          mapIssueEverywhere(state, issueId, (issue) => {
+            const verificationVotes = removeUserFromList(
+              issue.verificationVotes || [],
+              userId,
+            );
+
+            return {
+              ...issue,
+              verificationVotes,
+              satisfactionLevel: getSatisfactionLevel(verificationVotes),
+              status: issue.status === "closed" ? "resolved" : issue.status,
+            };
+          });
+        }
+
+        state.votingIssueId = null;
+        state.error = action.payload;
+      })
+      .addCase(appealIssue.pending, (state, action) => {
+        state.votingIssueId = action.meta.arg.issueId;
+        state.error = null;
+      })
+      .addCase(appealIssue.fulfilled, (state, action) => {
+        const updated = getIssue(action.payload);
+
+        state.votingIssueId = null;
+        updateIssueEverywhere(state, updated);
+      })
+      .addCase(appealIssue.rejected, (state, action) => {
         state.votingIssueId = null;
         state.error = action.payload;
       });
