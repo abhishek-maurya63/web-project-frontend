@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { FileText, Loader2 } from "lucide-react";
 import { loginUser } from "../../store/reducers/authSlice";
+import GoogleAuthButton from "./GoogleAuthButton";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -10,7 +11,19 @@ const Login = () => {
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading, error } = useSelector((state) => state.auth);
+  const [searchParams] = useSearchParams();
+  const { loading, error, isAuthenticated } = useSelector((state) => state.auth);
+  const googleError =
+    searchParams.get("error") === "google_auth_failed"
+      ? "Google sign-in could not be completed. Please try again."
+      : null;
+  const authError = error || googleError;
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,15 +42,23 @@ const Login = () => {
         {/* Logo */}
         <div className="flex flex-col items-center">
           <FileText className="w-12 h-12 text-cyan-400 mb-2" />
-          <h2 className="text-3xl font-bold text-white tracking-tight">
-            Log in to CivicHub
+          <h2 className="text-3xl font-bold text-white">
+            Log in to CivicPulse
           </h2>
         </div>
 
+        <GoogleAuthButton />
+
+        <div className="flex items-center gap-4 text-xs font-semibold uppercase text-slate-500">
+          <span className="h-px flex-1 bg-slate-800" />
+          <span>or</span>
+          <span className="h-px flex-1 bg-slate-800" />
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
+          {authError && (
             <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm">
-              {error}
+              {authError}
             </div>
           )}
 

@@ -1,7 +1,17 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import api from "../../services/api";
 
-const storedUser = localStorage.getItem("user");
+const getStoredUser = () => {
+  try {
+    const storedUser = localStorage.getItem("user");
+    return storedUser ? JSON.parse(storedUser) : null;
+  } catch {
+    localStorage.removeItem("user");
+    return null;
+  }
+};
+
+const storedUser = getStoredUser();
 
 const getErrorMessage = (error, fallback) =>
   error.response?.data?.message || error.message || fallback;
@@ -52,9 +62,21 @@ export const checkAuthStatus = createAsyncThunk(
   },
 );
 
+export const logoutUser = createAsyncThunk(
+  "auth/logoutUser",
+  async (_, { rejectWithValue }) => {
+    try {
+      await api.post("/api/auth/user/logout");
+      return true;
+    } catch (error) {
+      return rejectWithValue(getErrorMessage(error, "Logout failed"));
+    }
+  },
+);
+
 const initialState = {
   isAuthenticated: Boolean(storedUser),
-  user: storedUser ? JSON.parse(storedUser) : null,
+  user: storedUser,
   token: null,
   loading: false,
   status: "idle",
@@ -185,6 +207,33 @@ const authSlice = createSlice({
         state.isAuthenticated = false;
         state.user = null;
         state.token = null;
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+      })
+      .addCase(logoutUser.pending, (state) => {
+        state.loading = true;
+        state.status = "loading";
+        state.error = null;
+      })
+      .addCase(logoutUser.fulfilled, (state) => {
+        state.isAuthenticated = false;
+        state.user = null;
+        state.token = null;
+        state.loading = false;
+        state.status = "idle";
+        state.initialized = true;
+        state.error = null;
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+      })
+      .addCase(logoutUser.rejected, (state, action) => {
+        state.isAuthenticated = false;
+        state.user = null;
+        state.token = null;
+        state.loading = false;
+        state.status = "idle";
+        state.initialized = true;
+        state.error = action.payload;
         localStorage.removeItem("user");
         localStorage.removeItem("token");
       });

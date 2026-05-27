@@ -7,6 +7,7 @@ import Profile from "../pages/Profile";
 import Leaderboard from "../pages/Leaderboard";
 import ReportIssue from "../pages/ReportIssue";
 import MainLayout from "../components/layout/MainLayout";
+import AuthSuccess from "../features/auth/AuthSuccess";
 import Login from "../features/auth/Login";
 import Signup from "../features/auth/Signup";
 
@@ -26,6 +27,7 @@ const MainRoutes = () => {
       {/* Login route (no navbar) */}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/auth/success" element={<AuthSuccess />} />
 
       {/* All these routes will be rendered inside the MainLayout's Outlet */}
       <Route element={<MainLayout />}>

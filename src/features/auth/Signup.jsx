@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { registerUser } from "../../store/reducers/authSlice";
 import { FileText, Loader2 } from "lucide-react";
+import GoogleAuthButton from "./GoogleAuthButton";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -12,7 +13,13 @@ const Signup = () => {
   });
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading, error } = useSelector((state) => state.auth);
+  const { loading, error, isAuthenticated } = useSelector((state) => state.auth);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,9 +37,17 @@ const Signup = () => {
       <div className="w-full max-w-96 space-y-8">
         <div className="flex flex-col items-center">
           <FileText className="w-12 h-12 text-cyan-400 mb-2" />
-          <h2 className="text-3xl font-bold text-white tracking-tight">
+          <h2 className="text-3xl font-bold text-white">
             Join the community
           </h2>
+        </div>
+
+        <GoogleAuthButton />
+
+        <div className="flex items-center gap-4 text-xs font-semibold uppercase text-slate-500">
+          <span className="h-px flex-1 bg-slate-800" />
+          <span>or</span>
+          <span className="h-px flex-1 bg-slate-800" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -1,14 +1,16 @@
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useNavigate } from "react-router-dom";
 import {
   Bell,
   FileText,
   Home,
+  LogOut,
   MapPin,
   Plus,
   Target,
   UserCircle,
 } from "lucide-react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { logoutUser } from "../store/reducers/authSlice";
 
 const navLinks = [
   { name: "Home", path: "/", icon: Home },
@@ -18,6 +20,8 @@ const navLinks = [
 ];
 
 const Navbar = () => {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const displayName = user?.name || user?.username || "Citizen";
   const civicKarma = user?.civicKarma ?? user?.impactPoints ?? user?.karma ?? 0;
@@ -26,13 +30,18 @@ const Navbar = () => {
     `flex items-center gap-4 p-3 rounded-full transition-all duration-200 group
      ${isActive ? "bg-slate-800 font-semibold" : "hover:bg-slate-900/50"}`;
 
+  const handleLogout = async () => {
+    await dispatch(logoutUser());
+    navigate("/login");
+  };
+
   return (
     <>
       <nav className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-slate-800/50 bg-[#0f1419] p-5 sm:flex">
         <Link to="/" className="mb-10 flex items-center gap-2 px-3">
           <FileText className="h-8 w-8 text-cyan-400" />
-          <span className="text-xl font-bold tracking-tight text-white">
-            Civic<span className="text-cyan-400">Hub</span>
+          <span className="text-xl font-bold text-white">
+            Civic<span className="text-cyan-400">Pulse</span>
           </span>
         </Link>
 
@@ -66,10 +75,18 @@ const Navbar = () => {
                 {displayName.charAt(0).toUpperCase()}
               </span>
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate font-semibold text-white">{displayName}</p>
               <p className="text-sm text-cyan-400">{civicKarma} Civic Karma</p>
             </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Log out"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
           </div>
         )}
       </nav>
